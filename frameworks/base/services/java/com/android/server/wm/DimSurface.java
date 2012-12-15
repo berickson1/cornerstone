@@ -24,11 +24,14 @@ import android.view.SurfaceSession;
 import java.io.PrintWriter;
 
 class DimSurface {
+    static final String TAG = "DimSurface";
+
     Surface mDimSurface;
     boolean mDimShown = false;
     int mDimColor = 0;
     int mLayer = -1;
     int mLastDimWidth, mLastDimHeight;
+
 
     /**
      * Author: Onskreen
@@ -37,21 +40,27 @@ class DimSurface {
      * Setting DimSurface position variables
      */
     int mDimX = 0, mDimY = 0;
-
-    DimSurface(SurfaceSession session) {
-        if (mDimSurface == null) {
+    
+    DimSurface(SurfaceSession session, final int layerStack) {
+        try {
+            if (WindowManagerService.DEBUG_SURFACE_TRACE) {
+                mDimSurface = new WindowStateAnimator.SurfaceTrace(session,
+                    "DimSurface",
+                    16, 16, PixelFormat.OPAQUE,
+                    Surface.FX_SURFACE_DIM | Surface.HIDDEN);
+            } else {
+                mDimSurface = new Surface(session, "DimSurface",
+                    16, 16, PixelFormat.OPAQUE,
+                    Surface.FX_SURFACE_DIM | Surface.HIDDEN);
+            }
             if (WindowManagerService.SHOW_TRANSACTIONS ||
                     WindowManagerService.SHOW_SURFACE_ALLOC) Slog.i(WindowManagerService.TAG,
                             "  DIM " + mDimSurface + ": CREATE");
-            try {
-                mDimSurface = new Surface(session, 0,
-                        "DimSurface",
-                        -1, 16, 16, PixelFormat.OPAQUE,
-                        Surface.FX_SURFACE_DIM);
-                mDimSurface.setAlpha(0.0f);
-            } catch (Exception e) {
-                Slog.e(WindowManagerService.TAG, "Exception creating Dim surface", e);
-            }
+            mDimSurface.setLayerStack(layerStack);
+            mDimSurface.setAlpha(0.0f);
+            mDimSurface.show();
+        } catch (Exception e) {
+            Slog.e(WindowManagerService.TAG, "Exception creating Dim surface", e);
         }
     }
 
@@ -59,6 +68,11 @@ class DimSurface {
      * Show the dim surface.
      */
     void show(int dw, int dh, int layer, int color) {
+        if (mDimSurface == null) {
+            Slog.e(TAG, "show: no Surface");
+            return;
+        }
+
         if (!mDimShown) {
             if (WindowManagerService.SHOW_TRANSACTIONS) Slog.i(WindowManagerService.TAG, "  DIM " + mDimSurface + ": SHOW pos=(0,0) (" +
                     dw + "x" + dh + " layer=" + layer + ")");
@@ -66,7 +80,8 @@ class DimSurface {
             try {
                 mLastDimWidth = dw;
                 mLastDimHeight = dh;
-				/**
+                
+                /**
 				 * Author: Onskreen
 				 * Date: 21/12/2011
 				 *
@@ -75,6 +90,7 @@ class DimSurface {
 				 */
                 //mDimSurface.setPosition(0, 0);
                 mDimSurface.setPosition(mDimX, mDimY);
+                
                 mDimSurface.setSize(dw, dh);
                 mDimSurface.setLayer(layer);
                 mDimSurface.show();
@@ -92,12 +108,15 @@ class DimSurface {
             mDimSurface.setSize(dw, dh);
             mDimSurface.setLayer(layer);
             mDimSurface.setAlpha(((color>>24)&0xff)/255.0f);
-        } else {
-			mDimSurface.setPosition(mDimX, mDimY);
         }
     }
 
     void hide() {
+        if (mDimSurface == null) {
+            Slog.e(TAG, "hide: no Surface");
+            return;
+        }
+
         if (mDimShown) {
             mDimShown = false;
             try {
@@ -106,6 +125,13 @@ class DimSurface {
             } catch (RuntimeException e) {
                 Slog.w(WindowManagerService.TAG, "Illegal argument exception hiding dim surface");
             }
+        }
+    }
+
+    void kill() {
+        if (mDimSurface != null) {
+            mDimSurface.destroy();
+            mDimSurface = null;
         }
     }
 
